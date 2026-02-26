@@ -8,30 +8,30 @@
 const OLLAMA_BASE = 'http://localhost:11434';
 
 // ── DOM refs ──
-const sidebar         = document.getElementById('sidebar');
-const sidebarToggle   = document.getElementById('sidebarToggle');
+const sidebar = document.getElementById('sidebar');
+const sidebarToggle = document.getElementById('sidebarToggle');
 const mobileSidebarToggle = document.getElementById('mobileSidebarToggle');
-const sidebarOverlay  = document.getElementById('sidebarOverlay');
-const newChatBtn      = document.getElementById('newChatBtn');
-const modelSelect     = document.getElementById('modelSelect');
-const refreshModels   = document.getElementById('refreshModels');
-const conversationList= document.getElementById('conversationList');
-const chatContainer   = document.getElementById('chatContainer');
-const welcomeScreen   = document.getElementById('welcomeScreen');
+const sidebarOverlay = document.getElementById('sidebarOverlay');
+const newChatBtn = document.getElementById('newChatBtn');
+const modelSelect = document.getElementById('modelSelect');
+const refreshModels = document.getElementById('refreshModels');
+const conversationList = document.getElementById('conversationList');
+const chatContainer = document.getElementById('chatContainer');
+const welcomeScreen = document.getElementById('welcomeScreen');
 const messagesWrapper = document.getElementById('messagesWrapper');
-const messages        = document.getElementById('messages');
-const userInput       = document.getElementById('userInput');
-const sendBtn         = document.getElementById('sendBtn');
-const clearChatBtn    = document.getElementById('clearChatBtn');
-const statusDot       = document.getElementById('statusDot');
-const statusText      = document.getElementById('statusText');
+const messages = document.getElementById('messages');
+const userInput = document.getElementById('userInput');
+const sendBtn = document.getElementById('sendBtn');
+const clearChatBtn = document.getElementById('clearChatBtn');
+const statusDot = document.getElementById('statusDot');
+const statusText = document.getElementById('statusText');
 const topbarModelName = document.getElementById('topbarModelName');
 
 // ── State ──
 let conversations = JSON.parse(localStorage.getItem('ollama_conversations') || '[]');
 let currentConvId = null;
-let isStreaming    = false;
-let streamAbort    = null;
+let isStreaming = false;
+let streamAbort = null;
 
 // ── Init ──
 (async function init() {
@@ -136,7 +136,7 @@ async function checkOllamaStatus() {
       setStatus('connected', 'Connected');
       return true;
     }
-  } catch (_) {}
+  } catch (_) { }
   setStatus('error', 'Offline');
   return false;
 }
@@ -328,11 +328,28 @@ async function handleSend() {
     // Create assistant bubble for streaming
     assistantBubble = appendMessage('assistant', '', true);
     const contentEl = assistantBubble.querySelector('.message-content');
-    const cursorEl  = document.createElement('span');
+    const cursorEl = document.createElement('span');
     cursorEl.className = 'streaming-cursor';
+
+    // Live thinking indicator — shown immediately, dismissed once we know the model type
+    const thinkingEl = createThinkingIndicator();
+    contentEl.appendChild(thinkingEl);
 
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
+
+    // Separate accumulators for thinking vs answer
+    let thinkContent = '';      // raw thinking text (from message.thinking field)
+    let answerContent = '';     // actual answer (from message.content field)
+    let thinkCharCount = 0;
+    let contentTokensSeen = 0; // how many message.content tokens seen (used to dismiss indicator)
+    let hasThinking = false;   // true if this model sent any thinking tokens
+    let thinkPanelInjected = false;
+    let indicatorRemoved = false;
+
+    function removeIndicator() {
+      if (!indicatorRemoved) { thinkingEl.remove(); indicatorRemoved = true; }
+    }
 
     while (true) {
       const { done, value } = await reader.read();
@@ -340,25 +357,106 @@ async function handleSend() {
 
       const chunk = decoder.decode(value, { stream: true });
       const lines = chunk.split('\n').filter(Boolean);
+
       for (const line of lines) {
         try {
           const json = JSON.parse(line);
+
+          // ── Handle thinking field (Ollama's dedicated thinking stream) ──
+          if (json.message?.thinking) {
+            hasThinking = true;
+            thinkContent += json.message.thinking;
+            thinkCharCount = thinkContent.length;
+            const counter = thinkingEl.querySelector('.think-token-count');
+            if (counter) counter.textContent = `${thinkCharCount} chars`;
+          }
+
+          // ── Handle content field (the actual answer) ──
           if (json.message?.content) {
-            fullResponse += json.message.content;
-            contentEl.innerHTML = renderMarkdown(fullResponse);
-            contentEl.appendChild(cursorEl);
+            const token = json.message.content;
+            answerContent += token;
+            fullResponse += token;
+            contentTokensSeen++;
+
+            // If we're receiving answer content and had thinking → inject panel once
+            if (hasThinking && !thinkPanelInjected && thinkContent) {
+              thinkPanelInjected = true;
+              removeIndicator();
+              const thinkPanel = buildThinkPanel(thinkContent, thinkCharCount);
+              contentEl.appendChild(thinkPanel);
+            }
+
+            // If no thinking at all and we've seen 5+ content tokens → not a thinking model
+            if (!hasThinking && contentTokensSeen >= 5) {
+              removeIndicator();
+            }
+
+            // Also handle inline <think> tags in content (fallback for other models)
+            if (!hasThinking && answerContent.includes('<think>')) {
+              if (answerContent.includes('</think>')) {
+                const match = answerContent.match(/<think>([\s\S]*?)<\/think>/);
+                thinkContent = match ? match[1].trim() : '';
+                thinkCharCount = thinkContent.length;
+                answerContent = answerContent.replace(/<think>[\s\S]*?<\/think>/, '').trimStart();
+                hasThinking = true;
+                if (!thinkPanelInjected && thinkContent) {
+                  thinkPanelInjected = true;
+                  removeIndicator();
+                  const thinkPanel = buildThinkPanel(thinkContent, thinkCharCount);
+                  contentEl.appendChild(thinkPanel);
+                }
+              } else {
+                // Still inside an inline think block — update counter
+                hasThinking = true;
+                const inlineThink = answerContent.replace('<think>', '');
+                thinkCharCount = inlineThink.length;
+                const counter = thinkingEl.querySelector('.think-token-count');
+                if (counter) counter.textContent = `${thinkCharCount} chars`;
+              }
+            }
+
+            // Render the answer content live (strip any inline think tags)
+            const displayAnswer = answerContent.replace(/<think>[\s\S]*?<\/think>/g, '').trimStart();
+            if (displayAnswer) {
+              contentEl.querySelector('.answer-stream')?.remove();
+              const ansDiv = document.createElement('div');
+              ansDiv.className = 'answer-stream';
+              ansDiv.innerHTML = renderMarkdown(displayAnswer);
+              ansDiv.appendChild(cursorEl);
+              contentEl.appendChild(ansDiv);
+            }
+
             scrollToBottom();
           }
-          if (json.done) break;
-        } catch (_) {}
+
+          if (json.done) {
+            // If thinking was accumulated but panel not yet injected (e.g. no content tokens came)
+            if (hasThinking && !thinkPanelInjected && thinkContent) {
+              thinkPanelInjected = true;
+              removeIndicator();
+              const thinkPanel = buildThinkPanel(thinkContent, thinkCharCount);
+              contentEl.appendChild(thinkPanel);
+            }
+            removeIndicator();
+            break;
+          }
+        } catch (_) { }
       }
     }
 
+    removeIndicator();
+
     // Finalize
+    const cleanAnswer = answerContent.replace(/<think>[\s\S]*?<\/think>/g, '').trimStart() || answerContent;
     cursorEl.remove();
-    contentEl.innerHTML = renderMarkdown(fullResponse);
-    addMessageActions(assistantBubble, fullResponse);
-    conv.messages.push({ role: 'assistant', content: fullResponse });
+    const answerStreamEl = contentEl.querySelector('.answer-stream');
+    if (answerStreamEl) {
+      answerStreamEl.innerHTML = renderMarkdown(cleanAnswer);
+    } else {
+      contentEl.innerHTML = renderMarkdown(cleanAnswer);
+    }
+    addMessageActions(assistantBubble, cleanAnswer);
+    conv.messages.push({ role: 'assistant', content: cleanAnswer, thinkContent: thinkContent || null });
     saveConversations();
 
   } catch (err) {
@@ -409,9 +507,13 @@ function addTypingIndicator() {
     <div class="message-avatar">AI</div>
     <div class="message-body">
       <div class="message-bubble">
-        <span class="typing-dot"></span>
-        <span class="typing-dot"></span>
-        <span class="typing-dot"></span>
+        <div class="loading-indicator">
+          <span class="loading-bar"></span>
+          <span class="loading-bar"></span>
+          <span class="loading-bar"></span>
+          <span class="loading-bar"></span>
+          <span class="loading-bar"></span>
+        </div>
       </div>
     </div>
   `;
@@ -420,7 +522,55 @@ function addTypingIndicator() {
   return el;
 }
 
-function appendMessage(role, content, isStreaming = false) {
+// ── Thinking Indicator (live, with token counter) ──
+function createThinkingIndicator() {
+  const el = document.createElement('div');
+  el.className = 'think-indicator';
+  el.innerHTML = `
+    <div class="think-indicator-inner">
+      <span class="think-orb"></span>
+      <span class="think-label">Reasoning</span>
+      <span class="think-token-count">0 tokens</span>
+    </div>
+    <div class="think-progress-bar"><span class="think-progress-fill"></span></div>
+  `;
+  return el;
+}
+
+// ── Collapsible Think Panel ──
+function buildThinkPanel(thinkContent, tokenCount) {
+  const panel = document.createElement('div');
+  panel.className = 'think-panel';
+  const tokenStr = tokenCount ? `${tokenCount} tokens` : '';
+  panel.innerHTML = `
+    <button class="think-panel-header" aria-expanded="false">
+      <span class="think-panel-icon">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"/>
+          <path d="M12 8v4l3 3"/>
+        </svg>
+      </span>
+      <span class="think-panel-title">Thinking</span>
+      ${tokenStr ? `<span class="think-panel-tokens">${tokenStr}</span>` : ''}
+      <svg class="think-panel-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+        <polyline points="6 9 12 15 18 9"/>
+      </svg>
+    </button>
+    <div class="think-panel-body">
+      <div class="think-panel-content">${escapeHtml(thinkContent)}</div>
+    </div>
+  `;
+  const btn = panel.querySelector('.think-panel-header');
+  const body = panel.querySelector('.think-panel-body');
+  btn.addEventListener('click', () => {
+    const expanded = btn.getAttribute('aria-expanded') === 'true';
+    btn.setAttribute('aria-expanded', String(!expanded));
+    panel.classList.toggle('expanded', !expanded);
+  });
+  return panel;
+}
+
+function appendMessage(role, content, isStreaming = false, thinkContent = null) {
   const el = document.createElement('div');
   el.className = `message ${role}`;
   const avatarText = role === 'user' ? 'YOU' : 'AI';
@@ -433,6 +583,13 @@ function appendMessage(role, content, isStreaming = false) {
       ${role === 'assistant' && !isStreaming ? buildMessageActions(content) : ''}
     </div>
   `;
+  // Inject think panel for saved assistant messages that have reasoning
+  if (!isStreaming && role === 'assistant' && thinkContent) {
+    const bubble = el.querySelector('.message-bubble');
+    const contentDiv = el.querySelector('.message-content');
+    const panel = buildThinkPanel(thinkContent, null);
+    bubble.insertBefore(panel, contentDiv);
+  }
   if (!isStreaming && role === 'assistant') {
     setupCopyButtons(el);
   }
@@ -462,7 +619,7 @@ function renderMessages(msgs) {
   messages.innerHTML = '';
   if (msgs.length === 0) { showWelcome(true); return; }
   showWelcome(false);
-  msgs.forEach(m => appendMessage(m.role, m.content));
+  msgs.forEach(m => appendMessage(m.role, m.content, false, m.thinkContent));
   setTimeout(scrollToBottom, 50);
 }
 
@@ -503,9 +660,25 @@ function copyToClipboard(text, btn, successLabel, defaultLabel) {
   });
 }
 
+// ── Think-block stripper (for reasoning models like DeepSeek-R1) ──
+function stripThinkBlocks(text, resolved) {
+  if (!text) return '';
+  // If the think block is fully closed, remove it and return the answer
+  if (text.includes('</think>')) {
+    return text.replace(/<think>[\s\S]*?<\/think>/g, '').trimStart();
+  }
+  // If we're still inside a think block, return empty (don't render thinking)
+  if (text.includes('<think>')) {
+    return '';
+  }
+  return text;
+}
+
 // ── Markdown Renderer ──
 function renderMarkdown(text) {
   if (!text) return '';
+  // Strip any residual think tags before rendering
+  text = stripThinkBlocks(text, true);
 
   let html = escapeHtml(text);
 
