@@ -26,12 +26,20 @@ const clearChatBtn = document.getElementById('clearChatBtn');
 const statusDot = document.getElementById('statusDot');
 const statusText = document.getElementById('statusText');
 const topbarModelName = document.getElementById('topbarModelName');
+const imageUploadBtn = document.getElementById('imageUploadBtn');
+const imageInput = document.getElementById('imageInput');
+const imagePreviewBar = document.getElementById('imagePreviewBar');
 
 // ── State ──
 let conversations = JSON.parse(localStorage.getItem('ollama_conversations') || '[]');
 let currentConvId = null;
 let isStreaming = false;
 let streamAbort = null;
+
+// ── Vision state ──
+let currentModelIsVision = false;
+let attachedImages = []; // [{ dataUrl, base64 }]
+const visionModelCache = {}; // modelName → bool
 
 // ── Init ──
 (async function init() {
@@ -40,6 +48,11 @@ let streamAbort = null;
   await loadModels();
   setupEventListeners();
   autoResizeTextarea();
+  // Check vision capability for the initially selected model
+  if (modelSelect.value) {
+    const isVision = await checkModelVision(modelSelect.value);
+    updateVisionUI(isVision);
+  }
 })();
 
 // ── Event Listeners ──
@@ -83,8 +96,37 @@ function setupEventListeners() {
   });
 
   // Model changed
-  modelSelect.addEventListener('change', () => {
-    topbarModelName.textContent = modelSelect.value || 'Ollama Chat';
+  modelSelect.addEventListener('change', async () => {
+    const name = modelSelect.value;
+    topbarModelName.textContent = name || 'Ollama Chat';
+    if (name) {
+      const isVision = await checkModelVision(name);
+      updateVisionUI(isVision);
+    } else {
+      updateVisionUI(false);
+    }
+  });
+
+  // Image upload button → open file picker
+  imageUploadBtn.addEventListener('click', () => imageInput.click());
+
+  // File picker change → process selected images
+  imageInput.addEventListener('change', () => {
+    const files = [...imageInput.files];
+    if (!files.length) return;
+    files.forEach(file => {
+      const reader = new FileReader();
+      reader.onload = e => {
+        const dataUrl = e.target.result;
+        // base64 part only (strip the data:image/...;base64, prefix)
+        const base64 = dataUrl.split(',')[1];
+        attachedImages.push({ dataUrl, base64 });
+        renderImagePreviewBar();
+      };
+      reader.readAsDataURL(file);
+    });
+    // Reset input so the same file can be selected again
+    imageInput.value = '';
   });
 
   // Send on Enter (not shift+enter)
@@ -178,6 +220,70 @@ async function loadModels() {
   }
 }
 
+// ── Vision Model Detection ──
+async function checkModelVision(name) {
+  if (name in visionModelCache) return visionModelCache[name];
+  // Fast keyword shortcut — covers most common vision models
+  if (/llava|vision|bakllava|moondream|minicpm-v|qwen.*vl|llama.*vision|cogvlm/i.test(name)) {
+    return (visionModelCache[name] = true);
+  }
+  try {
+    const r = await fetch(`${OLLAMA_BASE}/api/show`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!r.ok) return (visionModelCache[name] = false);
+    const d = await r.json();
+    const families = d?.details?.families || [];
+    const hasClip = families.some(f => /clip|vision/i.test(f));
+    const hasProjector = !!d?.projector_info;
+    return (visionModelCache[name] = hasClip || hasProjector);
+  } catch {
+    return (visionModelCache[name] = false);
+  }
+}
+
+function updateVisionUI(isVision) {
+  currentModelIsVision = isVision;
+  imageUploadBtn.classList.toggle('hidden', !isVision);
+  if (!isVision) clearAttachedImages();
+}
+
+function renderImagePreviewBar() {
+  if (attachedImages.length === 0) {
+    imagePreviewBar.classList.add('hidden');
+    imagePreviewBar.innerHTML = '';
+    return;
+  }
+  imagePreviewBar.classList.remove('hidden');
+  imagePreviewBar.innerHTML = '';
+  attachedImages.forEach((img, idx) => {
+    const wrap = document.createElement('div');
+    wrap.className = 'image-preview-thumb';
+    wrap.innerHTML = `
+      <img src="${img.dataUrl}" alt="Attached image ${idx + 1}">
+      <button class="image-preview-remove" title="Remove image" data-idx="${idx}">✕</button>
+    `;
+    wrap.querySelector('.image-preview-remove').addEventListener('click', () => {
+      attachedImages.splice(idx, 1);
+      renderImagePreviewBar();
+    });
+    imagePreviewBar.appendChild(wrap);
+  });
+  // Badge on upload btn
+  const n = attachedImages.length;
+  imageUploadBtn.classList.toggle('has-images', n > 0);
+  imageUploadBtn.dataset.count = n > 0 ? n : '';
+}
+
+function clearAttachedImages() {
+  attachedImages = [];
+  renderImagePreviewBar();
+  imageUploadBtn.classList.remove('has-images');
+}
+
 // ── Conversations ──
 function generateId() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
@@ -259,7 +365,8 @@ function loadConversation(id) {
 // ── Send Message ──
 async function handleSend() {
   const text = userInput.value.trim();
-  if (!text || isStreaming) return;
+  const hasImages = attachedImages.length > 0;
+  if ((!text && !hasImages) || isStreaming) return;
 
   const model = modelSelect.value;
   if (!model) {
@@ -287,10 +394,19 @@ async function handleSend() {
   // Hide welcome, show messages
   showWelcome(false);
 
-  // Add user message
-  conv.messages.push({ role: 'user', content: text });
+  // Snapshot and clear attached images before sending
+  const imagesToSend = [...attachedImages];
+  clearAttachedImages();
+
+  // Add user message (store image data URLs for history display)
+  conv.messages.push({
+    role: 'user',
+    content: text,
+    images: imagesToSend.length > 0 ? imagesToSend.map(i => i.base64) : undefined,
+    imageDataUrls: imagesToSend.length > 0 ? imagesToSend.map(i => i.dataUrl) : undefined,
+  });
   saveConversations();
-  appendMessage('user', text);
+  appendMessage('user', text, false, null, imagesToSend.map(i => i.dataUrl));
   renderConversationList();
 
   // Scroll down
@@ -313,7 +429,11 @@ async function handleSend() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model,
-        messages: conv.messages.map(m => ({ role: m.role, content: m.content })),
+        messages: conv.messages.map(m => ({
+          role: m.role,
+          content: m.content,
+          ...(m.images ? { images: m.images } : {}),
+        })),
         stream: true,
       }),
       signal: streamAbort.signal,
@@ -576,14 +696,23 @@ function buildThinkPanel(thinkContent, tokenCount) {
   return panel;
 }
 
-function appendMessage(role, content, isStreaming = false, thinkContent = null) {
+function appendMessage(role, content, isStreaming = false, thinkContent = null, imageDataUrls = []) {
   const el = document.createElement('div');
   el.className = `message ${role}`;
   const avatarText = role === 'user' ? 'YOU' : 'AI';
+
+  // Build image thumbnails HTML for user messages
+  const imagesHtml = (role === 'user' && imageDataUrls.length > 0)
+    ? `<div class="user-image-strip">${imageDataUrls.map(url =>
+      `<img class="user-image-thumb" src="${url}" alt="Attached image">`
+    ).join('')}</div>`
+    : '';
+
   el.innerHTML = `
     <div class="message-avatar">${avatarText}</div>
     <div class="message-body">
       <div class="message-bubble">
+        ${imagesHtml}
         <div class="message-content">${isStreaming ? '' : renderMarkdown(content)}</div>
       </div>
       ${role === 'assistant' && !isStreaming ? buildMessageActions(content) : ''}
@@ -625,7 +754,7 @@ function renderMessages(msgs) {
   messages.innerHTML = '';
   if (msgs.length === 0) { showWelcome(true); return; }
   showWelcome(false);
-  msgs.forEach(m => appendMessage(m.role, m.content, false, m.thinkContent));
+  msgs.forEach(m => appendMessage(m.role, m.content, false, m.thinkContent, m.imageDataUrls || []));
   setTimeout(scrollToBottom, 50);
 }
 

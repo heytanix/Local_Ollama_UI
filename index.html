@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="style.css?v=10" />
+  <link rel="stylesheet" href="style.css?v=11" />
 </head>
 
 <body>
@@ -177,7 +177,21 @@
 
     <!-- Input Area -->
     <div class="input-area">
+      <!-- Hidden file input for image selection -->
+      <input type="file" id="imageInput" accept="image/*" multiple style="display:none" aria-hidden="true">
+      <!-- Image preview bar (shown when images are attached) -->
+      <div id="imagePreviewBar" class="image-preview-bar hidden"></div>
       <div class="input-box">
+        <!-- Image upload button (shown only for vision models) -->
+        <button id="imageUploadBtn" class="image-upload-btn hidden" title="Attach image(s)" type="button"
+          aria-label="Attach images">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+            <circle cx="8.5" cy="8.5" r="1.5" />
+            <polyline points="21 15 16 10 5 21" />
+          </svg>
+        </button>
         <textarea id="userInput" class="user-textarea" placeholder="Message Ollama…" rows="1" maxlength="32000"
           aria-label="Chat input"></textarea>
         <div class="input-actions">
@@ -198,7 +212,7 @@
   <!-- Overlay for mobile sidebar -->
   <div class="sidebar-overlay" id="sidebarOverlay"></div>
 
-  <script src="app.js?v=10"></script>
+  <script src="app.js?v=11"></script>
 </body>
 
 </html>
