@@ -341,6 +341,12 @@ async function handleSend() {
     // Separate accumulators for thinking vs answer
     let thinkContent = '';      // raw thinking text (from message.thinking field)
     let answerContent = '';     // actual answer (from message.content field)
+
+    // Format char count for display (whole numbers, compact K suffix)
+    const fmtChars = n => {
+      const c = Math.floor(n);
+      return c >= 1000 ? (c / 1000).toFixed(1) + 'K chars' : `${c} chars`;
+    };
     let thinkCharCount = 0;
     let contentTokensSeen = 0; // how many message.content tokens seen (used to dismiss indicator)
     let hasThinking = false;   // true if this model sent any thinking tokens
@@ -368,7 +374,7 @@ async function handleSend() {
             thinkContent += json.message.thinking;
             thinkCharCount = thinkContent.length;
             const counter = thinkingEl.querySelector('.think-token-count');
-            if (counter) counter.textContent = `${thinkCharCount} chars`;
+            if (counter) counter.textContent = fmtChars(thinkCharCount);
           }
 
           // ── Handle content field (the actual answer) ──
@@ -411,7 +417,7 @@ async function handleSend() {
                 const inlineThink = answerContent.replace('<think>', '');
                 thinkCharCount = inlineThink.length;
                 const counter = thinkingEl.querySelector('.think-token-count');
-                if (counter) counter.textContent = `${thinkCharCount} chars`;
+                if (counter) counter.textContent = fmtChars(thinkCharCount);
               }
             }
 
@@ -637,7 +643,9 @@ function setupCopyButtons(messageEl) {
   // Copy code buttons
   messageEl.querySelectorAll('.copy-code-btn').forEach(btn => {
     btn.addEventListener('click', () => {
-      const code = btn.closest('.message-content pre')?.querySelector('code')?.textContent || '';
+      // Prefer the raw stored code (preserves indentation perfectly)
+      const pre = btn.closest('pre');
+      const code = pre?.dataset?.rawCode ?? pre?.querySelector('code')?.textContent ?? '';
       copyToClipboard(code, btn, 'Copied!', 'Copy');
     });
   });
@@ -680,13 +688,21 @@ function renderMarkdown(text) {
   // Strip any residual think tags before rendering
   text = stripThinkBlocks(text, true);
 
-  let html = escapeHtml(text);
-
-  // Code blocks (```lang ... ```)
-  html = html.replace(/```(\w*)\n?([\s\S]*?)```/g, (_, lang, code) => {
+  // Code blocks (```lang ... ```) — extract BEFORE escaping so we get the raw code
+  let html = text.replace(/```(\w*)\n?([\s\S]*?)```/g, (_, lang, rawCode) => {
     const langLabel = lang || 'code';
-    return `<pre><div class="code-header"><span class="code-lang">${escapeHtml(langLabel)}</span><button class="copy-code-btn">Copy</button></div><code>${code.trimEnd()}</code></pre>`;
+    const trimmedCode = rawCode.trimEnd();
+    // Store the raw code in a data attribute for copy button; display it HTML-escaped
+    const safeCode = escapeHtml(trimmedCode);
+    const safeRaw = trimmedCode.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/\r\n/g, '&#10;').replace(/\n/g, '&#10;').replace(/\r/g, '&#10;');
+    return `<pre data-raw-code="${safeRaw}"><div class="code-header"><span class="code-lang">${escapeHtml(langLabel)}</span><button class="copy-code-btn">Copy</button></div><code>${safeCode}</code></pre>`;
   });
+
+  // Escape HTML for the remaining non-code parts
+  html = html
+    .split(/(<pre[\s\S]*?<\/pre>)/g)
+    .map((part, i) => i % 2 === 0 ? escapeHtml(part) : part)
+    .join('');
 
   // Inline code
   html = html.replace(/`([^`\n]+)`/g, '<code>$1</code>');
