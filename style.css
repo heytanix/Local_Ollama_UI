@@ -1295,50 +1295,462 @@ a:hover {
 }
 
 /* ============================
-   Responsive
+   Responsive — Tablet & Mobile (≤ 768px)
 ============================= */
 @media (max-width: 768px) {
+
+  /* ── Sidebar slides in from left as a drawer ── */
   .sidebar {
     position: fixed;
     top: 0;
     left: 0;
     height: 100dvh;
     transform: translateX(-100%);
-    width: var(--sidebar-width) !important;
-    min-width: var(--sidebar-width) !important;
+    width: 280px !important;
+    min-width: 280px !important;
     border-right: 1px solid var(--border) !important;
+    z-index: 300;
+    transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
   }
 
   .sidebar.mobile-open {
     transform: translateX(0);
-    box-shadow: 4px 0 24px rgba(0, 0, 0, 0.5);
+    box-shadow: 8px 0 32px rgba(0, 0, 0, 0.6);
   }
 
   .sidebar-overlay.visible {
     display: block;
   }
 
+  /* ── Toggle buttons ── */
   .mobile-sidebar-toggle {
     display: flex;
   }
 
-  .suggestion-grid {
-    grid-template-columns: 1fr;
-    max-width: 100%;
+  .sidebar-toggle {
+    display: none;
+    /* hide desktop collapse toggle on mobile */
+  }
+
+  /* Touch-friendly sidebar items */
+  .conversation-item {
+    padding: 12px 10px;
+    min-height: 44px;
+  }
+
+  .conversation-item-del {
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* ── Model selector & compute toggle ── */
+  .model-select {
+    font-size: 0.9rem;
+    padding: 11px 32px 11px 12px;
+    min-height: 44px;
+  }
+
+  .refresh-models-btn {
+    min-height: 38px;
+    font-size: 0.85rem;
+  }
+
+  .compute-toggle-row {
+    padding: 10px 12px;
+  }
+
+  /* ── Topbar ── */
+  .topbar {
+    padding: 0 12px;
+    height: 52px;
+  }
+
+  .mobile-sidebar-toggle {
+    width: 44px;
+    height: 44px;
+  }
+
+  .topbar-model-name {
+    font-size: 0.85rem;
+    max-width: 150px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .clear-chat-btn {
+    width: 44px;
+    height: 44px;
+  }
+
+  /* ── Welcome screen ── */
+  .welcome-screen {
+    padding: 24px 16px;
+    min-height: calc(100dvh - 52px - var(--input-area-height));
+  }
+
+  .welcome-logo {
+    margin-bottom: 14px;
   }
 
   .welcome-title {
-    font-size: 1.8rem;
+    font-size: 1.75rem;
+    letter-spacing: -0.02em;
+  }
+
+  .welcome-subtitle {
+    font-size: 0.9rem;
+    margin-bottom: 28px;
+  }
+
+  .suggestion-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    max-width: 100%;
+  }
+
+  .suggestion-card {
+    padding: 12px;
+    min-height: 80px;
+  }
+
+  /* ── Messages ── */
+  .messages-wrapper {
+    padding: 16px 0 4px;
   }
 
   .messages {
-    padding: 0 14px;
+    padding: 0 12px;
+    gap: 4px;
   }
 
+  .message {
+    gap: 10px;
+    padding: 10px 0;
+  }
+
+  .message-avatar {
+    width: 30px;
+    height: 30px;
+    font-size: 0.7rem;
+    flex-shrink: 0;
+  }
+
+  /* User bubble full width on phone */
+  .message.user .message-bubble {
+    max-width: 92%;
+  }
+
+  /* AI bubble — edge-to-edge on phone */
+  .message.assistant .message-bubble {
+    width: 100%;
+  }
+
+  .message-bubble {
+    font-size: 0.88rem;
+    padding: 10px 13px;
+    line-height: 1.7;
+    border-radius: var(--radius-md);
+  }
+
+  /* ── Code blocks — horizontal scroll on small screens ── */
+  .message-content pre {
+    max-width: 100%;
+    overflow-x: auto;
+    font-size: 0.78rem;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .message-content pre code {
+    font-size: 0.78rem;
+    padding: 10px;
+  }
+
+  .code-header {
+    padding: 7px 10px;
+  }
+
+  /* ── Message actions ── */
+  .message-actions {
+    opacity: 1;
+    /* always visible on touch screens (no hover) */
+    margin-top: 6px;
+  }
+
+  .msg-action-btn {
+    min-height: 36px;
+    padding: 6px 12px;
+    font-size: 0.78rem;
+  }
+
+  /* ── Input area ── */
   .input-area {
-    padding: 12px 14px 10px;
+    padding: 10px 12px;
+    /* push above phone home bar */
+    padding-bottom: max(10px, env(safe-area-inset-bottom, 10px));
+  }
+
+  .input-box {
+    padding: 10px 12px;
+    border-radius: var(--radius-lg);
+    gap: 8px;
+  }
+
+  .user-textarea {
+    font-size: 1rem;
+    /* prevents iOS auto-zoom on focus (needs ≥ 16px) */
+    line-height: 1.5;
+  }
+
+  .send-btn {
+    width: 40px;
+    height: 40px;
+    flex-shrink: 0;
+  }
+
+  .image-upload-btn {
+    width: 40px;
+    height: 40px;
+  }
+
+  /* ── Image preview bar ── */
+  .image-preview-bar {
+    padding: 6px 4px 2px;
+    gap: 6px;
+    margin-bottom: 6px;
+  }
+
+  .image-preview-thumb {
+    width: 56px;
+    height: 56px;
+  }
+
+  /* User sent images */
+  .user-image-thumb {
+    max-width: 180px;
+    max-height: 140px;
+  }
+
+  /* ── Input disclaimer ── */
+  .input-disclaimer {
+    font-size: 0.68rem;
+    margin-top: 6px;
+    text-align: center;
+  }
+
+  /* ── Think panel ── */
+  .think-panel-body {
+    max-height: none !important;
+    /* allow full height on mobile */
+  }
+
+  .think-panel.expanded .think-panel-body {
+    max-height: 260px;
   }
 }
+
+/* ============================
+   Extra Small Phones (≤ 480px)
+============================= */
+@media (max-width: 480px) {
+
+  html {
+    font-size: 14px;
+  }
+
+  .welcome-title {
+    font-size: 1.5rem;
+  }
+
+  .suggestion-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .suggestion-card {
+    min-height: 60px;
+  }
+
+  .topbar-model-name {
+    font-size: 0.8rem;
+    max-width: 110px;
+  }
+
+  .message-bubble {
+    font-size: 0.86rem;
+  }
+
+  .message-content pre code {
+    font-size: 0.75rem;
+  }
+
+  /* Tighter avatar on very small screens */
+  .message-avatar {
+    width: 26px;
+    height: 26px;
+    font-size: 0.62rem;
+  }
+
+  .messages {
+    padding: 0 8px;
+  }
+
+  .message {
+    gap: 8px;
+  }
+
+  .user-image-thumb {
+    max-width: 140px;
+    max-height: 110px;
+  }
+
+  .image-preview-bar {
+    max-width: 100%;
+    margin-left: 0;
+    margin-right: 0;
+    padding-left: 0;
+    padding-right: 0;
+  }
+}
+
+/* ============================
+   iOS / Android touch polish
+============================= */
+
+/* Remove tap highlight flash on buttons */
+button,
+label,
+.suggestion-card,
+.conversation-item {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Prevent text selection on interactive chrome */
+.message-avatar,
+.sidebar-label,
+.topbar,
+.compute-label,
+.code-header {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* Smooth momentum scroll in the chat area and sidebar */
+.chat-container,
+.sidebar-content,
+.conversation-list {
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Safe-area padding for chat on phones with notch/home-bar */
+.messages-wrapper {
+  padding-left: env(safe-area-inset-left, 0);
+  padding-right: env(safe-area-inset-right, 0);
+}
+
+
+/* ============================
+   CPU / GPU Toggle Switch
+============================= */
+
+.compute-toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.compute-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  transition: color 0.3s ease, opacity 0.3s ease;
+  user-select: none;
+  min-width: 28px;
+}
+
+.cpu-label {
+  color: #f87171;
+  text-align: right;
+}
+
+.gpu-label {
+  color: #4ade80;
+  text-align: left;
+}
+
+/* Dim the inactive side */
+.cpu-label.inactive,
+.gpu-label.inactive {
+  color: var(--text-muted);
+  opacity: 0.45;
+}
+
+/* Track */
+.compute-switch {
+  position: relative;
+  display: inline-block;
+  width: 48px;
+  height: 24px;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.compute-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+  position: absolute;
+}
+
+/* Slider track */
+.compute-slider {
+  position: absolute;
+  inset: 0;
+  border-radius: 12px;
+  background: #f87171;
+  /* CPU = red */
+  transition: background 0.35s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.35s ease;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.4);
+}
+
+.compute-switch input:checked+.compute-slider {
+  background: #22c55e;
+  /* GPU = green */
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.4), 0 0 8px rgba(34, 197, 94, 0.4);
+}
+
+/* Knob */
+.compute-slider::before {
+  content: '';
+  position: absolute;
+  left: 3px;
+  top: 3px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.35);
+  transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.compute-switch input:checked+.compute-slider::before {
+  transform: translateX(24px);
+}
+
+/* Focus ring for accessibility */
+.compute-switch input:focus-visible+.compute-slider {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 
 /* ============================
    Image Upload Feature

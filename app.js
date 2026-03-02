@@ -5,7 +5,9 @@
    markdown rendering, code copy, localStorage persistence
 =================================================== */
 
-const OLLAMA_BASE = 'http://localhost:11434';
+// Derive Ollama host from wherever this page was served (works for localhost AND LAN IPs)
+const OLLAMA_HOST = window.location.hostname;
+const OLLAMA_BASE = `http://${OLLAMA_HOST}:11434`;
 
 // ── DOM refs ──
 const sidebar = document.getElementById('sidebar');
@@ -29,6 +31,9 @@ const topbarModelName = document.getElementById('topbarModelName');
 const imageUploadBtn = document.getElementById('imageUploadBtn');
 const imageInput = document.getElementById('imageInput');
 const imagePreviewBar = document.getElementById('imagePreviewBar');
+const gpuToggle = document.getElementById('gpuToggle');
+const cpuLabel = document.getElementById('cpuLabel');
+const gpuLabel = document.getElementById('gpuLabel');
 
 // ── State ──
 let conversations = JSON.parse(localStorage.getItem('ollama_conversations') || '[]');
@@ -53,6 +58,10 @@ const visionModelCache = {}; // modelName → bool
     const isVision = await checkModelVision(modelSelect.value);
     updateVisionUI(isVision);
   }
+  // Restore GPU/CPU preference
+  const savedGpu = localStorage.getItem('ollama_use_gpu');
+  if (savedGpu === 'false') gpuToggle.checked = false;
+  updateComputeLabels();
 })();
 
 // ── Event Listeners ──
@@ -105,6 +114,12 @@ function setupEventListeners() {
     } else {
       updateVisionUI(false);
     }
+  });
+
+  // CPU / GPU toggle
+  gpuToggle.addEventListener('change', () => {
+    localStorage.setItem('ollama_use_gpu', gpuToggle.checked);
+    updateComputeLabels();
   });
 
   // Image upload button → open file picker
@@ -183,7 +198,15 @@ async function checkOllamaStatus() {
   return false;
 }
 
+// ── Compute (CPU/GPU) toggle ──
+function updateComputeLabels() {
+  const useGpu = gpuToggle.checked;
+  cpuLabel.classList.toggle('inactive', useGpu);   // dim CPU when GPU active
+  gpuLabel.classList.toggle('inactive', !useGpu);  // dim GPU when CPU active
+}
+
 function setStatus(state, text) {
+
   statusDot.className = 'status-dot ' + state;
   statusText.textContent = text;
 }
@@ -435,6 +458,8 @@ async function handleSend() {
           ...(m.images ? { images: m.images } : {}),
         })),
         stream: true,
+        // num_gpu:0 forces CPU-only; omitting it lets Ollama use GPU automatically
+        ...(gpuToggle.checked ? {} : { options: { num_gpu: 0 } }),
       }),
       signal: streamAbort.signal,
     });

@@ -3,13 +3,16 @@
 
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#0d0d0f" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <title>Ollama Chat</title>
   <meta name="description" content="A clean, ChatGPT-like web interface for your locally running Ollama instance." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="style.css?v=11" />
+  <link rel="stylesheet" href="style.css?v=13" />
 </head>
 
 <body>
@@ -55,6 +58,16 @@
           </svg>
           Refresh
         </button>
+
+        <!-- CPU / GPU toggle -->
+        <div class="compute-toggle-row">
+          <span class="compute-label cpu-label" id="cpuLabel">CPU</span>
+          <label class="compute-switch" title="Toggle CPU / GPU">
+            <input type="checkbox" id="gpuToggle" checked>
+            <span class="compute-slider"></span>
+          </label>
+          <span class="compute-label gpu-label" id="gpuLabel">GPU</span>
+        </div>
       </div>
 
       <div class="conversations-section">
@@ -212,7 +225,7 @@
   <!-- Overlay for mobile sidebar -->
   <div class="sidebar-overlay" id="sidebarOverlay"></div>
 
-  <script src="app.js?v=11"></script>
+  <script src="app.js?v=13"></script>
 </body>
 
 </html>
