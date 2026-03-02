@@ -1541,12 +1541,7 @@ a:hover {
     text-align: center;
   }
 
-  /* ── Think panel ── */
-  .think-panel-body {
-    max-height: none !important;
-    /* allow full height on mobile */
-  }
-
+  /* ── Think panel — cap expanded height on mobile, leave collapse untouched ── */
   .think-panel.expanded .think-panel-body {
     max-height: 260px;
   }

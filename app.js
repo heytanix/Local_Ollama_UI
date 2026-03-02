@@ -5,9 +5,9 @@
    markdown rendering, code copy, localStorage persistence
 =================================================== */
 
-// Derive Ollama host from wherever this page was served (works for localhost AND LAN IPs)
-const OLLAMA_HOST = window.location.hostname;
-const OLLAMA_BASE = `http://${OLLAMA_HOST}:11434`;
+// All /api/* calls route through server.py's built-in proxy → Ollama on port 11434.
+// Using window.location.origin keeps everything same-origin (no CORS) for any device.
+const OLLAMA_BASE = window.location.origin;
 
 // ── DOM refs ──
 const sidebar = document.getElementById('sidebar');
