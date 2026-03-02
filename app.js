@@ -839,26 +839,48 @@ function stripThinkBlocks(text, resolved) {
 // ── Markdown Renderer ──
 function renderMarkdown(text) {
   if (!text) return '';
-  // Strip any residual think tags before rendering
   text = stripThinkBlocks(text, true);
 
-  // Code blocks (```lang ... ```) — extract BEFORE escaping so we get the raw code
-  let html = text.replace(/```(\w*)\n?([\s\S]*?)```/g, (_, lang, rawCode) => {
+  // ── Step 1: Lift code blocks out into a safe array ───────────────────
+  // Placeholders use ASCII control chars (STX/ETX) that can't appear in LLM
+  // output and are untouched by escapeHtml and every regex below.
+  const codeBlocks = [];
+  text = text.replace(/```(\w*)\n?([\s\S]*?)```/g, (_, lang, rawCode) => {
     const langLabel = lang || 'code';
     const trimmedCode = rawCode.trimEnd();
-    // Store the raw code in a data attribute for copy button; display it HTML-escaped
+
+    // safeCode: what goes inside <code> for display (fully HTML-escaped)
     const safeCode = escapeHtml(trimmedCode);
-    const safeRaw = trimmedCode.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/\r\n/g, '&#10;').replace(/\n/g, '&#10;').replace(/\r/g, '&#10;');
-    return `<pre data-raw-code="${safeRaw}"><div class="code-header"><span class="code-lang">${escapeHtml(langLabel)}</span><button class="copy-code-btn">Copy</button></div><code>${safeCode}</code></pre>`;
+
+    // safeRaw: what goes in the data-raw-code attribute
+    // Must encode &, <, >, ", and newlines so the attribute value is valid HTML
+    const safeRaw = trimmedCode
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/\r\n/g, '&#10;')
+      .replace(/\n/g, '&#10;')
+      .replace(/\r/g, '&#10;');
+
+    const idx = codeBlocks.length;
+    codeBlocks.push(
+      `<pre data-raw-code="${safeRaw}">` +
+      `<div class="code-header">` +
+      `<span class="code-lang">${escapeHtml(langLabel)}</span>` +
+      `<button class="copy-code-btn">Copy</button>` +
+      `</div><code>${safeCode}</code></pre>`
+    );
+    return `\x02CODEBLOCK_${idx}\x03`;
   });
 
-  // Escape HTML for the remaining non-code parts
-  html = html
-    .split(/(<pre[\s\S]*?<\/pre>)/g)
-    .map((part, i) => i % 2 === 0 ? escapeHtml(part) : part)
-    .join('');
+  // ── Step 2: HTML-escape the non-code text ────────────────────────────
+  let html = escapeHtml(text);
+  // (placeholders contain no &<>" so they survive escapeHtml untouched)
 
-  // Inline code
+  // ── Step 3: All markdown transforms (never touch placeholders) ───────
+
+  // Inline code  (`foo`)
   html = html.replace(/`([^`\n]+)`/g, '<code>$1</code>');
 
   // Bold
@@ -886,26 +908,104 @@ function renderMarkdown(text) {
   // Unordered lists
   html = html.replace(/^[\*\-] (.+)$/gm, '<li>$1</li>');
   html = html.replace(/(<li>[\s\S]*?<\/li>)(?=\n<li>|$)/gm, '<ul>$&</ul>');
-  // Collapse consecutive ul tags
   html = html.replace(/<\/ul>\n<ul>/g, '');
 
   // Ordered lists
   html = html.replace(/^\d+\. (.+)$/gm, '<li>$1</li>');
 
   // Links
-  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g,
+    '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
 
   // Paragraphs — wrap consecutive non-block lines
+  // Placeholders that stand alone must NOT be wrapped in <p>
   html = html
     .split('\n\n')
     .map(block => {
-      if (/^<(h[1-6]|pre|ul|ol|blockquote|hr)/.test(block.trimStart())) return block;
+      const trimmed = block.trimStart();
+      if (/^<(h[1-6]|ul|ol|blockquote|hr)/.test(trimmed)) return block;
+      if (/^\x02CODEBLOCK_\d+\x03/.test(trimmed)) return block; // placeholder
       const inner = block.replace(/\n/g, '<br>');
       return `<p>${inner}</p>`;
     })
     .join('\n');
 
+  // ── Step 4: Re-inject code blocks ───────────────────────────────────
+  codeBlocks.forEach((block, idx) => {
+    // Use split/join instead of replace() to handle the literal \x02/\x03 chars
+    html = html.split(`\x02CODEBLOCK_${idx}\x03`).join(block);
+  });
+
   return html;
+}
+
+// Strip any residual think tags before rendering
+text = stripThinkBlocks(text, true);
+
+// Code blocks (```lang ... ```) — extract BEFORE escaping so we get the raw code
+let html = text.replace(/```(\w*)\n?([\s\S]*?)```/g, (_, lang, rawCode) => {
+  const langLabel = lang || 'code';
+  const trimmedCode = rawCode.trimEnd();
+  // Store the raw code in a data attribute for copy button; display it HTML-escaped
+  const safeCode = escapeHtml(trimmedCode);
+  const safeRaw = trimmedCode.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/\r\n/g, '&#10;').replace(/\n/g, '&#10;').replace(/\r/g, '&#10;');
+  return `<pre data-raw-code="${safeRaw}"><div class="code-header"><span class="code-lang">${escapeHtml(langLabel)}</span><button class="copy-code-btn">Copy</button></div><code>${safeCode}</code></pre>`;
+});
+
+// Escape HTML for the remaining non-code parts
+html = html
+  .split(/(<pre[\s\S]*?<\/pre>)/g)
+  .map((part, i) => i % 2 === 0 ? escapeHtml(part) : part)
+  .join('');
+
+// Inline code
+html = html.replace(/`([^`\n]+)`/g, '<code>$1</code>');
+
+// Bold
+html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+html = html.replace(/__(.+?)__/g, '<strong>$1</strong>');
+
+// Italic
+html = html.replace(/\*([^*\n]+)\*/g, '<em>$1</em>');
+html = html.replace(/_([^_\n]+)_/g, '<em>$1</em>');
+
+// Strikethrough
+html = html.replace(/~~(.+?)~~/g, '<del>$1</del>');
+
+// Headings
+html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
+html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
+html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>');
+
+// Horizontal rule
+html = html.replace(/^---+$/gm, '<hr>');
+
+// Blockquote
+html = html.replace(/^&gt; (.+)$/gm, '<blockquote>$1</blockquote>');
+
+// Unordered lists
+html = html.replace(/^[\*\-] (.+)$/gm, '<li>$1</li>');
+html = html.replace(/(<li>[\s\S]*?<\/li>)(?=\n<li>|$)/gm, '<ul>$&</ul>');
+// Collapse consecutive ul tags
+html = html.replace(/<\/ul>\n<ul>/g, '');
+
+// Ordered lists
+html = html.replace(/^\d+\. (.+)$/gm, '<li>$1</li>');
+
+// Links
+html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+
+// Paragraphs — wrap consecutive non-block lines
+html = html
+  .split('\n\n')
+  .map(block => {
+    if (/^<(h[1-6]|pre|ul|ol|blockquote|hr)/.test(block.trimStart())) return block;
+    const inner = block.replace(/\n/g, '<br>');
+    return `<p>${inner}</p>`;
+  })
+  .join('\n');
+
+return html;
 }
 
 // ── Helpers ──
